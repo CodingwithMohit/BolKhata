@@ -50,13 +50,53 @@ declare global {
 export type SpeechLanguage = "hi-IN" | "en-IN";
 type Availability = "checking" | "available" | "unsupported" | "insecure";
 
-export function readSpeechResults(results: SpeechResultListLike): string {
-  const segments: string[] = [];
-  for (let index = 0; index < results.length; index += 1) {
-    const transcript = results[index][0]?.transcript.trim();
-    if (transcript) segments.push(transcript);
+function comparisonToken(token: string): string {
+  return token.toLocaleLowerCase("en-IN").replace(/^[^\p{L}\p{N}₹]+|[^\p{L}\p{N}₹]+$/gu, "");
+}
+
+export function appendSpeechSegment(previous: string, next: string): string {
+  const left = previous.trim();
+  const right = next.trim();
+  if (!left) return right;
+  if (!right) return left;
+
+  const leftTokens = left.split(/\s+/u);
+  const rightTokens = right.split(/\s+/u);
+  const leftComparable = leftTokens.map(comparisonToken);
+  const rightComparable = rightTokens.map(comparisonToken);
+
+  if (
+    rightComparable.length >= leftComparable.length &&
+    leftComparable.every((token, index) => token === rightComparable[index])
+  ) {
+    return right;
   }
-  return segments.join(" ").trim();
+  if (
+    leftComparable.length >= rightComparable.length &&
+    rightComparable.every((token, index) => token === leftComparable[index])
+  ) {
+    return left;
+  }
+
+  let overlap = Math.min(leftTokens.length, rightTokens.length);
+  while (overlap > 0) {
+    const matches = leftComparable
+      .slice(-overlap)
+      .every((token, index) => token === rightComparable[index]);
+    if (matches) break;
+    overlap -= 1;
+  }
+
+  return [...leftTokens, ...rightTokens.slice(overlap)].join(" ");
+}
+
+export function readSpeechResults(results: SpeechResultListLike): string {
+  let combined = "";
+  for (let index = 0; index < results.length; index += 1) {
+    const segment = results[index][0]?.transcript.trim();
+    if (segment) combined = appendSpeechSegment(combined, segment);
+  }
+  return combined;
 }
 
 export function useSpeechInput() {
@@ -104,10 +144,10 @@ export function useSpeechInput() {
   const finishRecognition = useCallback(() => {
     const finishedTranscript = currentTranscriptRef.current;
     if (finishedTranscript) {
-      sessionTranscriptRef.current = [sessionTranscriptRef.current, finishedTranscript]
-        .filter(Boolean)
-        .join(" ")
-        .trim();
+      sessionTranscriptRef.current = appendSpeechSegment(
+        sessionTranscriptRef.current,
+        finishedTranscript,
+      );
       currentTranscriptRef.current = "";
     }
     const fullTranscript = sessionTranscriptRef.current;
@@ -136,13 +176,10 @@ export function useSpeechInput() {
     recognition.onresult = (event) => {
       if (!heldRef.current || generation !== generationRef.current) return;
       currentTranscriptRef.current = readSpeechResults(event.results);
-      const fullTranscript = [
+      const fullTranscript = appendSpeechSegment(
         sessionTranscriptRef.current,
         currentTranscriptRef.current,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .trim();
+      );
       setTranscript(fullTranscript);
       transcriptCallbackRef.current?.(fullTranscript);
     };

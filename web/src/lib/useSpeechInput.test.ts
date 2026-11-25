@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { readSpeechResults } from "./useSpeechInput";
+import {
+  appendSpeechSegment,
+  readSpeechResults,
+} from "./useSpeechInput";
 
 describe("readSpeechResults", () => {
   it("builds a transcript from the current result snapshot", () => {
@@ -26,5 +29,31 @@ describe("readSpeechResults", () => {
       2: { 0: { transcript: "" }, isFinal: false },
     };
     expect(readSpeechResults(results)).toBe("Ramesh");
+  });
+
+  it("collapses cumulative mobile recognition result segments", () => {
+    const results = {
+      length: 6,
+      0: { 0: { transcript: "Ramesh" }, isFinal: true },
+      1: { 0: { transcript: "Ramesh Ne" }, isFinal: true },
+      2: { 0: { transcript: "Ramesh Ne ₹100" }, isFinal: true },
+      3: { 0: { transcript: "Ramesh Ne ₹100 Udhar" }, isFinal: true },
+      4: { 0: { transcript: "Ramesh Ne ₹100 Udhar Liye" }, isFinal: false },
+      5: { 0: { transcript: "Ramesh Ne ₹100 Udhar Liye" }, isFinal: false },
+    };
+
+    expect(readSpeechResults(results)).toBe("Ramesh Ne ₹100 Udhar Liye");
+  });
+
+  it("merges overlapping recognition restarts without repeating their shared words", () => {
+    expect(
+      appendSpeechSegment(
+        "Ramesh Ne ₹100 Udhar",
+        "Ramesh Ne ₹100 Udhar Liye",
+      ),
+    ).toBe("Ramesh Ne ₹100 Udhar Liye");
+    expect(appendSpeechSegment("Ramesh", "ne ₹100 udhar liye")).toBe(
+      "Ramesh ne ₹100 udhar liye",
+    );
   });
 });
