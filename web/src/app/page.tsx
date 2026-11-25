@@ -308,6 +308,8 @@ export default function Home() {
               type="button"
               onPointerDown={(event) => {
                 event.preventDefault();
+                if (!event.isPrimary || event.button !== 0) return;
+                event.currentTarget.setPointerCapture(event.pointerId);
                 speech.start((transcript) => {
                   setText(transcript);
                   setInputSource("voice");
@@ -315,6 +317,8 @@ export default function Home() {
               }}
               onPointerUp={speech.stop}
               onPointerCancel={speech.stop}
+              onContextMenu={(event) => event.preventDefault()}
+              onDragStart={(event) => event.preventDefault()}
               onKeyDown={(event) => {
                 if ((event.key === " " || event.key === "Enter") && !event.repeat) {
                   event.preventDefault();
@@ -328,9 +332,10 @@ export default function Home() {
                 if (event.key === " " || event.key === "Enter") speech.stop();
               }}
               aria-pressed={speech.listening}
-              className={`min-h-12 rounded-xl px-5 py-3 text-base font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1f6840] ${
+              className={`min-h-12 touch-none select-none rounded-xl px-5 py-3 text-base font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1f6840] ${
                 speech.listening ? "bg-[#9a4e12]" : "bg-[#1f6840] hover:bg-[#185633]"
               }`}
+              style={{ touchAction: "none", WebkitTouchCallout: "none" }}
             >
               {speech.listening ? t("home.listening") : t("home.holdToSpeak")}
             </button>

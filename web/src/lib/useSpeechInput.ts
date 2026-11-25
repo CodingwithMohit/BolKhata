@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface SpeechAlternativeLike {
   transcript: string;
@@ -50,6 +50,15 @@ declare global {
 export type SpeechLanguage = "hi-IN" | "en-IN";
 type Availability = "checking" | "available" | "unsupported" | "insecure";
 
+export function readSpeechResults(results: SpeechResultListLike): string {
+  const segments: string[] = [];
+  for (let index = 0; index < results.length; index += 1) {
+    const transcript = results[index][0]?.transcript.trim();
+    if (transcript) segments.push(transcript);
+  }
+  return segments.join(" ").trim();
+}
+
 export function useSpeechInput() {
   const [availability, setAvailability] = useState<Availability>("checking");
   const [language, setLanguage] = useState<SpeechLanguage>("hi-IN");
@@ -57,6 +66,18 @@ export function useSpeechInput() {
   const [transcript, setTranscript] = useState("");
   const [message, setMessage] = useState("");
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const heldRef = useRef(false);
+  const sessionTranscriptRef = useRef("");
+  const currentTranscriptRef = useRef("");
+  const transcriptCallbackRef = useRef<((value: string) => void) | null>(null);
+  const languageRef = useRef(language);
+  const generationRef = useRef(0);
+  const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const beginRecognitionRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    languageRef.current = language;
+  }, [language]);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -72,76 +93,149 @@ export function useSpeechInput() {
     });
 
     return () => {
+      heldRef.current = false;
+      generationRef.current += 1;
+      if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
       recognitionRef.current?.abort();
       recognitionRef.current = null;
     };
   }, []);
 
-  function start(onTranscript: (value: string) => void) {
-    if (availability !== "available") {
-      setMessage(
-        availability === "insecure"
-          ? "Voice input needs HTTPS or localhost. You can type instead."
-          : "Voice input is not supported in this browser. You can type instead.",
-      );
-      return;
+  const finishRecognition = useCallback(() => {
+    const finishedTranscript = currentTranscriptRef.current;
+    if (finishedTranscript) {
+      sessionTranscriptRef.current = [sessionTranscriptRef.current, finishedTranscript]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+      currentTranscriptRef.current = "";
     }
+    const fullTranscript = sessionTranscriptRef.current;
+    setTranscript(fullTranscript);
+    transcriptCallbackRef.current?.(fullTranscript);
+  }, []);
+
+  const beginRecognition = useCallback(() => {
+    if (!heldRef.current || recognitionRef.current) return;
 
     const Recognition =
       window.SpeechRecognition ?? window.webkitSpeechRecognition;
     if (!Recognition) {
+      heldRef.current = false;
+      setListening(false);
       setAvailability("unsupported");
       setMessage("Voice input is not supported in this browser. You can type instead.");
       return;
     }
 
+    const generation = generationRef.current;
     const recognition = new Recognition();
-    recognition.lang = language;
+    recognition.lang = languageRef.current;
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.onresult = (event) => {
-      const currentTranscript = Array.from({ length: event.results.length }, (_, index) =>
-        event.results[index][0].transcript,
-      ).join(" ").trim();
-      setTranscript(currentTranscript);
-      onTranscript(currentTranscript);
+      if (!heldRef.current || generation !== generationRef.current) return;
+      currentTranscriptRef.current = readSpeechResults(event.results);
+      const fullTranscript = [
+        sessionTranscriptRef.current,
+        currentTranscriptRef.current,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+      setTranscript(fullTranscript);
+      transcriptCallbackRef.current?.(fullTranscript);
     };
     recognition.onerror = (event) => {
       const errorMessages: Record<string, string> = {
         "not-allowed": "Microphone permission was denied. You can type instead.",
         "service-not-allowed": "Microphone permission was denied. You can type instead.",
-        "no-speech": "No speech was heard. Hold the button and try again.",
+        "no-speech": "No speech was heard. Keep holding the button and try again.",
         network: "Speech recognition is unavailable right now. You can type instead.",
         "audio-capture": "No microphone was found. You can type instead.",
       };
       setMessage(errorMessages[event.error] ?? "Voice input stopped. You can type instead.");
-      setListening(false);
-      recognitionRef.current = null;
+      if (event.error !== "no-speech") {
+        heldRef.current = false;
+        generationRef.current += 1;
+        recognitionRef.current = null;
+        finishRecognition();
+        setListening(false);
+      }
     };
     recognition.onend = () => {
-      setListening(false);
+      if (generation !== generationRef.current) return;
       recognitionRef.current = null;
+      finishRecognition();
+      if (!heldRef.current) {
+        setListening(false);
+        return;
+      }
+      restartTimerRef.current = setTimeout(() => {
+        restartTimerRef.current = null;
+        if (heldRef.current) beginRecognitionRef.current();
+      }, 200);
     };
 
-    setMessage("");
-    setTranscript("");
     try {
       recognition.start();
       recognitionRef.current = recognition;
       setListening(true);
     } catch {
+      heldRef.current = false;
+      generationRef.current += 1;
+      setListening(false);
       setMessage("Could not start voice input. Check microphone permission or type instead.");
     }
-  }
+  }, [finishRecognition]);
 
-  function stop() {
+  useEffect(() => {
+    beginRecognitionRef.current = beginRecognition;
+  }, [beginRecognition]);
+
+  const start = useCallback(
+    (onTranscript: (value: string) => void) => {
+      if (heldRef.current) return;
+      if (availability !== "available") {
+        setMessage(
+          availability === "insecure"
+            ? "Voice input needs HTTPS or localhost. You can type instead."
+            : "Voice input is not supported in this browser. You can type instead.",
+        );
+        return;
+      }
+
+      heldRef.current = true;
+      generationRef.current += 1;
+      sessionTranscriptRef.current = "";
+      currentTranscriptRef.current = "";
+      transcriptCallbackRef.current = onTranscript;
+      setMessage("");
+      setTranscript("");
+      setListening(true);
+      beginRecognition();
+    },
+    [availability, beginRecognition],
+  );
+
+  const stop = useCallback(() => {
+    if (!heldRef.current) return;
+    heldRef.current = false;
+    generationRef.current += 1;
+    if (restartTimerRef.current) {
+      clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = null;
+    }
+    const recognition = recognitionRef.current;
+    recognitionRef.current = null;
+    finishRecognition();
     try {
-      recognitionRef.current?.stop();
+      recognition?.stop();
     } catch {
       setMessage("Voice input stopped. You can continue by typing.");
     }
     setListening(false);
-  }
+  }, [finishRecognition]);
 
   return {
     availability,
