@@ -112,7 +112,7 @@ GEMINI_FALLBACK_MODEL=
 
 Deploy in this order so the frontend can be configured with the server URL:
 
-1. **Deploy `/server` to Render** as a Web Service. The included [`render.yaml`](./render.yaml) sets the root directory to `server`, build command to `npm install && npm run build`, start command to `node dist/index.js`, and health check to `/health`. Set `GEMINI_API_KEY` if AI parsing is desired; it is optional. Note the Render service URL.
+1. **Deploy `/server` to Render** as a Web Service. The included [`render.yaml`](./render.yaml) sets the root directory to `server`, build command to `npm install --include=dev && npm run build`, start command to `node dist/index.js`, and health check to `/health`. Including development dependencies ensures the `tsup` build tool is installed even though the deployed server uses `NODE_ENV=production`. Set `GEMINI_API_KEY` if AI parsing is desired; it is optional. Note the Render service URL.
 2. **Deploy `/web` to Vercel** as a Next.js project with root directory `web`. Set `NEXT_PUBLIC_API_URL` to the Render URL (without a trailing slash), then deploy.
 3. **Set `FRONTEND_ORIGIN` on Render** to the exact Vercel origin, such as `https://bolkhata.vercel.app`. Add any custom frontend origins as comma-separated values, then redeploy/restart the Render service.
 
