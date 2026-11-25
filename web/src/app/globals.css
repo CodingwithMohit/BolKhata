@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-noto-sans), var(--font-noto-sans-devanagari), sans-serif;
+}
+
+:root {
+  color-scheme: light;
+  background: #faf9f4;
+  color: #203629;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #faf9f4;
+}
+
+button,
+textarea {
+  font: inherit;
+}
