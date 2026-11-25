@@ -2,6 +2,24 @@
 
 BolKhata is a voice-first, browser-local udhaar ledger for small shops in India. Shopkeepers can type or speak Hindi/Hinglish transactions, review editable entries, and update customer balances. It does not handle payments or hold money.
 
+**Live demo:** [bol-khata-ten.vercel.app](https://bol-khata-ten.vercel.app)
+
+Built for AI Vibeathon 2026, PromptWars round.
+
+## Screenshots
+
+### Home ledger, voice and typed entry, and daily summary
+
+![BolKhata home ledger with voice input, daily summary, and customer balances](./web/public/screenshots/home-ledger.png)
+
+### Customer ledger, balance, reminders, and entry history
+
+![BolKhata customer ledger with balance, reminder, and transaction history](./web/public/screenshots/customer-ledger.png)
+
+### Settings, privacy, language, and data export
+
+![BolKhata settings with language selection, privacy details, CSV export, and delete controls](./web/public/screenshots/settings.png)
+
 ## Architecture
 
 There are exactly two deployables, with independent npm packages and no workspaces:
@@ -76,6 +94,14 @@ Voice recognition is available only in browsers that implement the Web Speech AP
 In Chrome and Edge, speech-recognition audio is processed by the browser vendor's servers. Typed input never uses the microphone. If AI parsing is enabled, only uncertain transaction text is sent to the configured Express service and then to Google Gemini; long digit sequences are removed before the Gemini request. Turn off AI parsing to keep all text parsing in the browser.
 
 The manifest and icon support adding the site to a device's home screen. **BolKhata does not provide offline support**; no service worker is included.
+
+## Known limitations
+
+- Ledger data is stored only in this browser. Clearing browser data or localStorage deletes the ledger; data does not sync across devices.
+- Voice recognition is available only in some browsers, requires HTTPS or localhost, and transcription accuracy varies with device, language, accent, and background noise.
+- Hinglish phrases can be ambiguous. Always review and correct the suggested customer, amount, and transaction type before saving.
+- BolKhata is a lightweight udhaar ledger, not accounting software. It does not provide formal bookkeeping, tax reports, reconciliation, or payment processing.
+- The app has no service worker and does not work offline.
 
 ## API
 
